@@ -21,9 +21,9 @@ miniroot aarch64 3.12.0
 mkdir -p /usr/bin
 pushd /usr/bin
 wget -qO qemu-arm-static \
-     https://github.com/multiarch/qemu-user-static/releases/download/v6.2.0-6/qemu-arm-static
+     https://github.com/multiarch/qemu-user-static/releases/download/v7.2.0-1/qemu-arm-static
 wget -qO qemu-aarch64-static \
-     https://github.com/multiarch/qemu-user-static/releases/download/v6.2.0-6/qemu-aarch64-static
+     https://github.com/multiarch/qemu-user-static/releases/download/v7.2.0-1/qemu-aarch64-static
 chmod +x qemu-*-static
 popd
 
