@@ -44,16 +44,21 @@ jobs:
 
       - run: ls -hl dist
 
-      - name: Create Release
+      - name: Compute release tag
+        id: compute_tag
+        run: |
+          build_date=$(date +%Y%m%d)
+          build_number=$(( $(git tag | grep $build_date | wc -l) + 1 ))
+          TAG="$build_date.$build_number"
+          echo "### Generated tag: $TAG"
+          echo "::set-output name=tag::$TAG"
+
+      - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          sudo snap install hub --classic
-          build_date=$(date +%Y%m%d)
-          build_number=$(( $(git tag | grep $build_date | wc -l) + 1 ))
-          tag="$build_date.$build_number"
-          assets=()
-          for f in dist/*; do
-            [ -f "$f" ] && assets+=(-a "$f")
-          done
-          hub release create $tag -m "$tag" "${assets[@]}"
+          sudo apt-get update
+          sudo apt-get install -y hub
+          hub release create ${{ steps.compute_tag.outputs.tag }} \
+            -m "${{ steps.compute_tag.outputs.tag }}" \
+            dist/*
