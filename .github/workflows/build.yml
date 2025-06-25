@@ -8,13 +8,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1) Checkout your code
       - uses: actions/checkout@v3
 
+      # 2) Enable cross‐arch QEMU binfmt handlers
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v2
         with:
           platforms: all
 
+      # 3) Cache download/build artifacts
       - name: Build Cache
         id: build-cache
         uses: actions/cache@v3
@@ -24,12 +27,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-build-cache-
 
+      # 4) Sanity‐check that binfmt_misc + qemu‐static are wired up
       - name: Verify binfmt_misc
         run: |
           sudo modprobe binfmt_misc
           sudo mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc || true
           ./check-docker-binfmt.sh
 
+      # 5) Your cross‐arch builds
       - name: Build armhf (rpi)
         run: ARCH=armhf FLAVOR=rpi ./docker-build.sh
 
@@ -42,16 +47,19 @@ jobs:
       - name: Build lts
         run: FLAVOR=lts ./docker-build.sh
 
-      - run: ls -hl dist
+      # 6) Inspect artifacts
+      - name: List artifacts
+        run: ls -lh dist
 
+      # 7) Compute a date‐based tag
       - name: Compute release tag
         id: compute_tag
         run: |
           build_date=$(date +%Y%m%d)
           build_number=$(( $(git tag | grep $build_date | wc -l) + 1 ))
-          TAG="$build_date.$build_number"
-          echo "TAG=$TAG" >> $GITHUB_ENV
-    
+          echo "TAG=$build_date.$build_number" >> $GITHUB_ENV
+
+      # 8) Create the GitHub Release
       - name: Create GitHub Release
         id: create_release
         uses: actions/create-release@v1
@@ -63,11 +71,9 @@ jobs:
           draft: false
           prerelease: false
 
+      # 9) Upload *all* files in dist/ via the GitHub CLI
       - name: Upload Release Assets
-        uses: actions/upload-release-asset@v1
+        run: |
+          gh release upload "${{ env.TAG }}" dist/* --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: dist/*
-          asset_content_type: application/octet-stream
