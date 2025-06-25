@@ -1,10 +1,6 @@
 name: Build Image
 
 on:
-  # push:
-  #   branches: [ master ]
-  # pull_request:
-  #   branches: [ master ]
   workflow_dispatch:
 
 jobs:
@@ -12,44 +8,52 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - name: Setup QEMU
-      uses: docker/setup-qemu-action@v2
-      with:
-        platforms: all
-    - name: Build Cache
-      id: build-cache
-      uses: actions/cache@v3
-      with:
-        path: cache
-        key: ${{ runner.os }}-build-cache
+      - uses: actions/checkout@v3
 
-    - run: |
-        sudo modprobe binfmt_misc
-        sudo mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc || true
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: all
 
-        sudo apt update
-        sudo apt install -y qemu-user qemu-user-binfmt
+      - name: Build Cache
+        id: build-cache
+        uses: actions/cache@v3
+        with:
+          path: cache
+          key: ${{ runner.os }}-build-cache-${{ hashFiles('**/docker-build.sh','**/check-docker-binfmt.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-build-cache-
 
-    - run: ./check-docker-binfmt.sh
+      - name: Verify binfmt_misc
+        run: |
+          sudo modprobe binfmt_misc
+          sudo mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc || true
+          ./check-docker-binfmt.sh
 
-    - run: ARCH=armhf FLAVOR=rpi ./docker-build.sh
-    - run: ARCH=aarch64 FLAVOR=rpi ./docker-build.sh
-    - run: FLAVOR=virt ./docker-build.sh
-    - run: FLAVOR=lts ./docker-build.sh
+      - name: Build armhf (rpi)
+        run: ARCH=armhf FLAVOR=rpi ./docker-build.sh
 
-    - run: ls -hl dist
+      - name: Build aarch64 (rpi)
+        run: ARCH=aarch64 FLAVOR=rpi ./docker-build.sh
 
-    # attach multi file https://github.com/github/hub/issues/1769#issuecomment-397271041
-    - env:
-        GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-      run: |
-        sudo snap install hub --classic
-        build_date=$(date +%Y%m%d)
-        build_number=$[$(git tag | grep $build_date | wc -l) + 1]
-        tag="$build_date.$build_number"
-        
-        assets=()
-        for f in dist/*; do [ -f "$f" ] && assets+=(-a "$f"); done
+      - name: Build virt
+        run: FLAVOR=virt ./docker-build.sh
 
-        hub release create $tag -m "$tag" "${assets[@]}"
+      - name: Build lts
+        run: FLAVOR=lts ./docker-build.sh
+
+      - run: ls -hl dist
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          sudo snap install hub --classic
+          build_date=$(date +%Y%m%d)
+          build_number=$(( $(git tag | grep $build_date | wc -l) + 1 ))
+          tag="$build_date.$build_number"
+          assets=()
+          for f in dist/*; do
+            [ -f "$f" ] && assets+=(-a "$f")
+          done
+          hub release create $tag -m "$tag" "${assets[@]}"
