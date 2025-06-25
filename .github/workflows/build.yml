@@ -22,7 +22,7 @@ jobs:
 
     - run: |
         sudo modprobe binfmt_misc
-        sudo mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc
+        sudo mount binfmt_misc -t binfmt_misc /proc/sys/fs/binfmt_misc || true
 
         sudo apt update
         sudo apt install -y qemu-user qemu-user-binfmt
