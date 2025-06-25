@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -ex
 
-apk add wget qemu-arm qemu-aarch64 qemu-arm-static qemu-aarch64-static
+apk add wget qemu-arm qemu-aarch64
 
 miniroot(){
   local arch=$1
@@ -17,6 +17,15 @@ miniroot(){
 
 miniroot armhf 3.12.0
 miniroot aarch64 3.12.0
+
+mkdir -p /usr/bin
+pushd /usr/bin
+wget -qO qemu-arm-static \
+     https://github.com/multiarch/qemu-user-static/releases/download/v6.2.0-6/qemu-arm-static
+wget -qO qemu-aarch64-static \
+     https://github.com/multiarch/qemu-user-static/releases/download/v6.2.0-6/qemu-aarch64-static
+chmod +x qemu-*-static
+popd
 
 cp /usr/bin/qemu-arm  arch/armhf/root/usr/bin/
 cp /usr/bin/qemu-arm-static  arch/armhf/root/usr/bin/
