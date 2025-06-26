@@ -1,11 +1,11 @@
+# Dockerfile
 # syntax=docker/dockerfile:experimental
+
 FROM alpine:3.22
 
-# install the LTS kernel and tools (incl. firmware)
+# install LTS kernel, firmware, mkinitfs and build initramfs
 RUN apk update \
- && apk add --no-cache linux-lts initramfs busybox
+ && apk add --no-cache linux-lts linux-firmware mkinitfs busybox \
+ && mkinitfs -b /boot
 
-# (Optional) build your initramfs here, e.g.:
-# RUN mkinitfs -c /etc/mkinitfs/mkinitfs.conf -b /boot
-
-CMD ["uname","-a"]
+CMD ["uname", "-a"]
