@@ -3,21 +3,24 @@ name: Build Image
 on:
   workflow_dispatch:
 
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Checkout your code
+      # 1) Checkout
       - uses: actions/checkout@v3
 
-      # 2) Enable cross‐arch QEMU binfmt handlers
+      # 2) Register binfmt/qemu
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v2
         with:
           platforms: all
 
-      # 3) Cache download/build artifacts
+      # 3) Cache miniroot downloads, etc.
       - name: Build Cache
         id: build-cache
         uses: actions/cache@v3
@@ -27,14 +30,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-build-cache-
 
-      # 4) Sanity‐check that binfmt_misc + qemu‐static are wired up
+      # 4) Sanity-check binfmt_misc + check-docker-binfmt.sh
       - name: Verify binfmt_misc
         run: |
           sudo modprobe binfmt_misc
           sudo mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc || true
           ./check-docker-binfmt.sh
 
-      # 5) Your cross‐arch builds
+      # 5) Cross-arch builds
       - name: Build armhf (rpi)
         run: ARCH=armhf FLAVOR=rpi ./docker-build.sh
 
@@ -47,33 +50,36 @@ jobs:
       - name: Build lts
         run: FLAVOR=lts ./docker-build.sh
 
-      # 6) Inspect artifacts
+      # 6) List artifacts
       - name: List artifacts
         run: ls -lh dist
 
-      # 7) Compute a date‐based tag
+      # 7) Compute a date-based tag
       - name: Compute release tag
         id: compute_tag
         run: |
           build_date=$(date +%Y%m%d)
           build_number=$(( $(git tag | grep $build_date | wc -l) + 1 ))
-          echo "TAG=$build_date.$build_number" >> $GITHUB_ENV
+          TAG="$build_date.$build_number"
+          echo "TAG=$TAG" >> $GITHUB_ENV
 
-      # 8) Create the GitHub Release
-      - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ env.TAG }}
-          release_name: Release ${{ env.TAG }}
-          draft: false
-          prerelease: false
-
-      # 9) Upload *all* files in dist/ via the GitHub CLI
-      - name: Upload Release Assets
+      # 8) Ensure GitHub CLI is logged in
+      - name: Authenticate gh
         run: |
-          gh release upload "${{ env.TAG }}" dist/* --clobber
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      # 9) Create the Release if missing
+      - name: Create or reuse GitHub Release
+        run: |
+          TAG=${{ env.TAG }}
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, skipping create."
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes "$TAG"
+          fi
+
+      # 10) Upload all files in dist/
+      - name: Upload Release Assets
+        run: gh release upload "${{ env.TAG }}" dist/* --clobber
