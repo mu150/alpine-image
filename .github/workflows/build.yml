@@ -1,69 +1,55 @@
-name: Build Image
+name: Build & Release Alpine Kernel Image
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-publish:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Checkout your code
+      # 1) grab your code
       - uses: actions/checkout@v3
 
-      # 2) Auto-register QEMU/binfmt for all architectures
-      - name: Setup QEMU
-        uses: docker/setup-qemu-action@v2
+      # 2) setup Docker Buildx for cross-arch
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # 3) login (replace with your registry of choice)
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
         with:
-          platforms: all
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
-      # 3) Cache your miniroot downloads, etc.
-      - name: Build Cache
-        id: build-cache
-        uses: actions/cache@v3
+      # 4) build & push multi-arch image
+      - name: Build & push multi-arch
+        uses: docker/build-push-action@v4
         with:
-          path: cache
-          # <-- notice separate globs as separate args to hashFiles()
-          key: ${{ runner.os }}-docker-cache-${{ hashFiles('docker-build.sh','check-docker-binfmt.sh') }}
-          restore-keys: |
-            ${{ runner.os }}-docker-cache-
+          context: .
+          file: Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm/v7,linux/arm64/v8
+          tags: youruser/alpine-kernel:latest
 
-      # 4) Verify binfmt_misc + QEMU-static wiring
-      - name: Verify binfmt_misc
+      # 5) list out any dist/ files you want to attach
+      - name: List dist/
+        run: ls -lh dist || echo "no dist/ dir, skipping"
+
+      # 6) compute a date-based tag
+      - name: Compute Release Tag
+        id: tag
         run: |
-          ./check-docker-binfmt.sh
+          D=$(date +%Y%m%d)
+          N=$(( $(git tag | grep "^$D\." | wc -l) + 1 ))
+          echo "TAG=$D.$N" >> $GITHUB_ENV
 
-      # 5) Cross-arch builds
-      - name: Build armhf (rpi)
-        run: ARCH=armhf FLAVOR=rpi ./docker-build.sh
-
-      - name: Build aarch64 (rpi)
-        run: ARCH=aarch64 FLAVOR=rpi ./docker-build.sh
-
-      - name: Build virt
-        run: FLAVOR=virt ./docker-build.sh
-
-      - name: Build lts
-        run: FLAVOR=lts ./docker-build.sh
-
-      # 6) List the outputs
-      - name: List artifacts
-        run: ls -lh dist
-
-      # 7) Compute a date-based tag
-      - name: Compute release tag
-        id: compute_tag
-        run: |
-          DATE=$(date +%Y%m%d)
-          COUNT=$(( $(git tag | grep "^${DATE}\." | wc -l) + 1 ))
-          echo "TAG=${DATE}.${COUNT}" >> $GITHUB_ENV
-
-      # 8) Create or update the GitHub Release and upload all dist/* assets
-      - name: Publish Release
+      # 7) publish on GitHub (idempotent & single-step)
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ env.TAG }}
           name: Release ${{ env.TAG }}
-          files: dist/*
+          files: dist/*    # or omit if you have no extra artifacts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
