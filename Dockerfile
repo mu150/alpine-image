@@ -1,11 +1,14 @@
-# Dockerfile
-# syntax=docker/dockerfile:experimental
+# File: Dockerfile
+# syntax = docker/dockerfile:1.4
 
 FROM alpine:3.22
 
-# install LTS kernel, firmware, mkinitfs and build initramfs
-RUN apk update \
- && apk add --no-cache linux-lts linux-firmware mkinitfs busybox \
- && mkinitfs -b /boot
+RUN set -eux; \
+    apk update; \
+    apk add --no-cache linux-lts linux-firmware mkinitfs busybox; \
+    mkdir -p /boot; \
+    # detect the only modules dir we have and pass it to mkinitfs:
+    KVER="$(ls /lib/modules)"; \
+    mkinitfs -b /boot -k "$KVER"
 
 CMD ["uname", "-a"]
