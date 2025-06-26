@@ -9,6 +9,6 @@ RUN set -eux; \
     mkdir -p /boot; \
     # detect the only modules dir we have and pass it to mkinitfs:
     KVER="$(ls /lib/modules)"; \
-    mkinitfs -b /boot -k "$KVER"
+    mkinitfs -k "$KVER"
 
 CMD ["uname", "-a"]
