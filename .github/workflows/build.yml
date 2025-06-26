@@ -8,9 +8,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Pull in your code
-      - name: Checkout
-        uses: actions/checkout@v3
+      # 1) Checkout your code
+      - uses: actions/checkout@v3
 
       # 2) Auto-register QEMU/binfmt for all architectures
       - name: Setup QEMU
@@ -24,13 +23,15 @@ jobs:
         uses: actions/cache@v3
         with:
           path: cache
-          key: ${{ runner.os }}-docker-cache-${{ hashFiles('**/docker-build.sh','**/check-docker-binfmt.sh') }}
+          # <-- notice separate globs as separate args to hashFiles()
+          key: ${{ runner.os }}-docker-cache-${{ hashFiles('docker-build.sh','check-docker-binfmt.sh') }}
           restore-keys: |
             ${{ runner.os }}-docker-cache-
 
       # 4) Verify binfmt_misc + QEMU-static wiring
       - name: Verify binfmt_misc
-        run: ./check-docker-binfmt.sh
+        run: |
+          ./check-docker-binfmt.sh
 
       # 5) Cross-arch builds
       - name: Build armhf (rpi)
@@ -45,11 +46,11 @@ jobs:
       - name: Build lts
         run: FLAVOR=lts ./docker-build.sh
 
-      # 6) Inspect your output
+      # 6) List the outputs
       - name: List artifacts
         run: ls -lh dist
 
-      # 7) Compute a date-based tag like “20250625.1”
+      # 7) Compute a date-based tag
       - name: Compute release tag
         id: compute_tag
         run: |
@@ -57,12 +58,12 @@ jobs:
           COUNT=$(( $(git tag | grep "^${DATE}\." | wc -l) + 1 ))
           echo "TAG=${DATE}.${COUNT}" >> $GITHUB_ENV
 
-      # 8) Create or update the Release & upload every dist/* file
-      - name: Publish Release with assets
+      # 8) Create or update the GitHub Release and upload all dist/* assets
+      - name: Publish Release
         uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ env.TAG }}
           name: Release ${{ env.TAG }}
           files: dist/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
