@@ -13,7 +13,8 @@
 
 FROM alpine:edge
 RUN set -eux; \
-    printf "http://dl-cdn.alpinelinux.org/alpine/edge/main\nhttp://dl-cdn.alpinelinux.org/alpine/edge/community\n" \
+    printf "http://dl-cdn.alpinelinux.org/alpine/edge/main\n\
+    http://dl-cdn.alpinelinux.org/alpine/edge/community\n" \
       > /etc/apk/repositories; \
     apk update; \
     apk add --no-cache linux-edge linux-firmware mkinitfs busybox; \
