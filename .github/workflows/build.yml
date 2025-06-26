@@ -1,4 +1,3 @@
-# .github/workflows/build.yml
 name: Build & Release Alpine LTS Kernel Image
 
 on:
@@ -9,20 +8,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Checkout the code
       - uses: actions/checkout@v3
 
-      # 2) Auto-register QEMU/binfmt for cross-arch builds
-      - name: Setup QEMU
+      - name: Setup QEMU (all arches)
         uses: docker/setup-qemu-action@v2
         with:
           platforms: all
 
-      # 3) Setup Docker Buildx (multi-arch + QEMU)
       - name: Setup Buildx
         uses: docker/setup-buildx-action@v2
 
-      # 4) Login to GitHub Container Registry (no extra secrets needed)
       - name: Login to GHCR
         uses: docker/login-action@v2
         with:
@@ -30,31 +25,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5) Build & push the multi-arch image
-      - name: Build & Push Image
+      - name: Build & push multi-arch image
         uses: docker/build-push-action@v4
         with:
           context: .
           file: Dockerfile
           push: true
           platforms: linux/amd64,linux/arm/v7,linux/arm64/v8
-          # this will publish as ghcr.io/<your_org_or_user>/alpine-kernel:lts
           tags: ghcr.io/${{ github.repository_owner }}/alpine-kernel:lts
 
-      # 6) List any other artifacts you might have
       - name: List dist/
         run: |
           if [ -d dist ]; then ls -lh dist; else echo "no dist/ directory"; fi
 
-      # 7) Compute a date-based release tag
-      - name: Compute Release Tag
+      - name: Compute release tag
         id: compute_tag
         run: |
           DATE=$(date +%Y%m%d)
           COUNT=$(( $(git tag | grep "^${DATE}\." | wc -l) + 1 ))
           echo "TAG=${DATE}.${COUNT}" >> $GITHUB_ENV
 
-      # 8) Publish a GitHub Release and attach dist/* (idempotent)
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v1
         with:
