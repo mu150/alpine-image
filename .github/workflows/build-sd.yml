@@ -70,12 +70,18 @@ jobs:
             mv $IMG dist/
           done
 
-      # 6) Upload workflow artifacts for immediate download
-      - name: Upload workflow artifacts
+      # 6) Upload each SD image as a separate workflow artifact
+      - name: Upload armhf SD image
         uses: actions/upload-artifact@v4
         with:
-          name: sd-card-images
-          path: dist/*.img
+          name: sd-armhf.img
+          path: dist/sd-armhf.img
+
+      - name: Upload arm64 SD image
+        uses: actions/upload-artifact@v4
+        with:
+          name: sd-arm64.img
+          path: dist/sd-arm64.img
 
       # 7) Compute a date-based tag
       - name: Compute release tag
@@ -85,12 +91,15 @@ jobs:
           COUNT=$(( $(git tag | grep "^${DATE}\." | wc -l) + 1 ))
           echo "TAG=${DATE}.${COUNT}" >> $GITHUB_ENV
 
-      # 7) Publish a GitHub Release and attach the .img files
+      # 8) Publish GitHub Release & attach each SD image
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.TAG }}
           name: Release ${{ env.TAG }}
-          files: dist/*.img
+          files: |
+            dist/sd-armhf.img
+            dist/sd-arm64.img
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
