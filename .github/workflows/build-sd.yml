@@ -1,0 +1,109 @@
+# File: .github/workflows/build-sd.yml
+name: Build & Release Alpine Edge SD Images
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-sd-images:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1) checkout
+      - uses: actions/checkout@v3
+
+      # 2) enable binfmt/QEMU so Docker can build non-amd64
+      - uses: docker/setup-qemu-action@v2
+        with:
+          platforms: all
+
+      # 3) enable Docker Buildx (needed by next step)
+      - uses: docker/setup-buildx-action@v2
+
+      # 4) build kernel+initramfs for each arch and extract vmlinuz & initramfs into `artifacts/`
+      - name: Build & Extract Kernel Artifacts
+        run: |
+          mkdir -p artifacts/{vmlinuz,initramfs}
+          for ARCH in armhf arm64; do
+            TAG=alpine-kernel-edge:$ARCH
+            # build just that arch and load into local Docker
+            docker build \
+              --platform=linux/$ARCH \
+              --load \
+              --file Dockerfile \
+              --tag $TAG \
+              .
+            # create container, detect kernel version, extract files
+            CID=$(docker create $TAG)
+            KVER=$(docker run --rm $TAG sh -c 'ls /lib/modules')
+            docker cp $CID:/boot/vmlinuz-$KVER artifacts/vmlinuz/vmlinuz-$ARCH-$KVER
+            docker cp $CID:/boot/initramfs-$KVER*   artifacts/initramfs/initramfs-$ARCH-$KVER.img.gz
+            docker rm $CID
+          done
+
+      # 5) build full SD images by:
+      #    • downloading Alpine Edge rootfs tarball for each arch
+      #    • creating a loopback ext4 image
+      #    • unpacking rootfs + copying kernel/initramfs into /boot
+      - name: Build Full SD-Card Images
+        run: |
+          sudo modprobe loop
+          mkdir -p dist
+          for ARCH in armhf arm64; do
+            ROOTFS_TAR="https://dl-cdn.alpinelinux.org/alpine/edge/releases/${ARCH}/alpine-minirootfs-edge-${ARCH}.tar.gz"
+            WORK=work-$ARCH
+            mkdir $WORK
+            wget -qO rootfs.tar.gz $ROOTFS_TAR
+            sudo tar xf rootfs.tar.gz -C $WORK
+
+            # compute size for dd (rootfs size + 200 MiB slack)
+            ROOTFS_BYTES=$(du -sb $WORK | cut -f1)
+            IMG_SIZE=$((ROOTFS_BYTES + 200*1024*1024))
+            MB=$(( (IMG_SIZE + 1024*1024 - 1) / (1024*1024) ))
+            dd if=/dev/zero of=sd-${ARCH}.img bs=1M count=$MB status=none
+
+            # partition (single ext4, bootable)
+            parted sd-${ARCH}.img --script \
+              mklabel msdos \
+              mkpart primary ext4 1MiB 100% \
+              set 1 boot on
+
+            LOOP=$(sudo losetup --show -fP sd-${ARCH}.img)
+            sudo mkfs.ext4 -F ${LOOP}p1
+
+            MNT=mnt-$ARCH
+            mkdir $MNT
+            sudo mount ${LOOP}p1 $MNT
+
+            # copy rootfs
+            sudo cp -a $WORK/* $MNT/
+
+            # copy vmlinuz + initramfs
+            KVER=$(basename artifacts/vmlinuz/vmlinuz-$ARCH-*)
+            sudo mkdir -p $MNT/boot
+            sudo cp artifacts/vmlinuz/$KVER        $MNT/boot/$KVER
+            sudo cp artifacts/initramfs/initramfs-${ARCH}-*.img.gz $MNT/boot/
+
+            # cleanup
+            sudo umount $MNT
+            sudo losetup -d $LOOP
+            mv sd-${ARCH}.img dist/
+          done
+
+      # 6) compute a date-based tag
+      - name: Compute Release Tag
+        id: tag
+        run: |
+          D=$(date +%Y%m%d)
+          N=$(( $(git tag | grep "^$D\." | wc -l) + 1 ))
+          echo "TAG=$D.$N" >> $GITHUB_ENV
+
+      # 7) publish a GitHub Release and attach the .img files
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Release ${{ env.TAG }}
+          files: dist/*.img
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
