@@ -37,12 +37,12 @@ jobs:
       - name: Create SD-card images
         run: |
           sudo modprobe loop
-          mkdir dist
+          mkdir -p dist
           for ARCH in armhf arm64; do
             WORK=out/$ARCH
             IMG=sd-${ARCH}.img
 
-            # compute size: rootfs size + 200 MiB
+            # size = rootfs + 200MiB slack
             BYTES=$(du -sb $WORK | cut -f1)
             MB=$(( (BYTES + 200*1024*1024 + 1024*1024 -1)/(1024*1024) ))
 
@@ -70,7 +70,14 @@ jobs:
             mv $IMG dist/
           done
 
-      # 6) Compute a date-based tag
+      # 6) Upload workflow artifacts for immediate download
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: sd-card-images
+          path: dist/*.img
+
+      # 7) Compute a date-based tag
       - name: Compute release tag
         id: compute_tag
         run: |
